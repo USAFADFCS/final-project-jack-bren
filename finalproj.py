@@ -11,8 +11,8 @@ from fairlib import (
 )
 
 # Set your Hugging Face token, replace 'your_token' with your actual token
-os.environ["HF_TOKEN"] = "your_token"
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = "your_token"
+#os.environ["HF_TOKEN"] = "your_token"
+#os.environ["HUGGINGFACEHUB_API_TOKEN"] = "your_token"
 
 def create_agent(model_name, role_prompt, tools=None, memory=None):
     llm = HuggingFaceAdapter(model_name)
@@ -56,7 +56,7 @@ async def main():
                 print("Agent: Goodbye!")
                 break
             response = await agent.arun(user_input)
-            print(f"Agent: {response}")
+            print("Agent:", response.get("text", response))
         except KeyboardInterrupt:
             print("Agent: Exiting...")
             break
