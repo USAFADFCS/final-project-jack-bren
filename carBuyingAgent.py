@@ -1,6 +1,7 @@
 # Agent generated from PerplexityAI
-# summarizes recall and trim information
-
+# C1C Jack West and Brendan Wu
+# CS471 Fall 2025
+# Documentation: Included in separate file in the repository
 
 import os
 import asyncio
@@ -11,10 +12,9 @@ from huggingface_hub import HfFolder
 
 
 
-
-#from fairlib import Tool
+# Base class for FAIR-LLM compatible tool.
 class Tool:
-    """Base class for FAIR-LLM compatible tool."""
+    
     def get_tool_name(self):
         raise NotImplementedError("Tool must define tool name.")
 
@@ -25,7 +25,7 @@ class Tool:
         """Main entrypoint for tool. Accepts a dictionary or string of arguments."""
         raise NotImplementedError("Tool must implement 'call' method.")
 
-
+# Tool allows agent to find recall information for given vehicle
 class RecallLookupTool(Tool):
     def __init__(self):
         self.name = self.get_tool_name()
@@ -39,12 +39,14 @@ class RecallLookupTool(Tool):
         return "Fetches NHTSA recall summaries for a specified year/make/model."
 
     def call(self, args):
-        # args: e.g., {'query': '2018 Toyota Camry'}
+        # Parses make, model, and year from user input
         make, model, year = parse_vehicle_info(args['query'])
         if not all([make, model, year]):
             return "Could not parse vehicle info from input."
+        # Separate function makes the API call 
         return fetch_nhtsa_recalls(make, model, year)
 
+# Tool allows agent to find safety ratings for given vehicle
 class RatingsLookupTool(Tool):
     def __init__(self):
         self.name = self.get_tool_name()
@@ -61,7 +63,9 @@ class RatingsLookupTool(Tool):
         if not all([make, model, year]):
             return "Could not parse vehicle info from input."
 
-        # Step 1: get vehicle variants and VehicleId(s)
+        # No separate fetch function
+
+        # First API call to find the NHTSA vehicle ID from make, model, and year
         search_url = (
             f"https://api.nhtsa.gov/SafetyRatings/modelyear/{year}"
             f"/make/{make}/model/{model}"
@@ -81,7 +85,7 @@ class RatingsLookupTool(Tool):
                 if not vehicle_id:
                     continue
 
-                # Step 2: get ratings for this VehicleId
+                # Take the found vehicle ID, make another API call to fetch safety ratings
                 rating_url = f"https://api.nhtsa.gov/SafetyRatings/VehicleId/{vehicle_id}"
                 r2 = requests.get(rating_url, timeout=10)
                 r2.raise_for_status()
@@ -95,6 +99,7 @@ class RatingsLookupTool(Tool):
                 side = r.get("OverallSideCrashRating", "Not Rated")
                 rollover = r.get("RolloverRating", "Not Rated")
 
+                # Summary of found safety rating information for the LLM to consider in response
                 summaries.append(
                     f"- {desc}: overall {overall}, front {front}, side {side}, rollover {rollover}"
                 )
@@ -114,21 +119,23 @@ class RatingsLookupTool(Tool):
 
 import re
 
-# Popular car makes for matching (expand as needed)
+# List of popular car makes for the parser to find within user input
 KNOWN_MAKES = [
     "Toyota", "Honda", "Ford", "Nissan", "Chevrolet", "BMW", "Mercedes", "Volkswagen", "Hyundai", "Kia",
     "Mazda", "Subaru", "Audi", "Jeep", "Dodge", "Ram", "GMC", "Lexus", "Acura", "Infiniti", "Tesla",
     "Volvo", "Porsche", "Jaguar", "Mitsubishi", "Buick", "Cadillac", "Chrysler", "Land Rover"
 ]
 
+# parser function; identifies make, model, and year from user input
 def parse_vehicle_info(user_input):
-    # Find 4-digit year between 1980-2099
+
+    # Finds 4-digit year between 1980-2099 (regex)
     year_match = re.search(r"\b(19|20)\d{2}\b", user_input)
     if not year_match:
         return None, None, None
     year = year_match.group()
 
-    # Find car make, ignoring case
+    # Find car make (case insensitive)
     make = None
     for known_make in KNOWN_MAKES:
         pattern = r'\b' + re.escape(known_make) + r'\b'
@@ -139,8 +146,7 @@ def parse_vehicle_info(user_input):
     if not make:
         return None, None, None
 
-    # Extract model: Find words after year and make
-    # Example: "recalls for 2018 Toyota Camry XLE"
+    # Find car model by seeking words after year and make
     # after year, expect make somewhere in following tokens
     tokens = user_input.split()
     try:
@@ -164,9 +170,10 @@ def parse_vehicle_info(user_input):
     return make, model, year
 
 
-# ----- Retrieval function -----
+# Recall information function (called in RecallLookupTool())
 def fetch_nhtsa_recalls(make, model, year):
 
+    # API call to NHTSA recall database
     url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={make}&model={model}&modelYear={year}"
     try:
         r = requests.get(url, timeout=10)
@@ -175,12 +182,14 @@ def fetch_nhtsa_recalls(make, model, year):
         if not recalls:
             return f"No recalls found for {year} {make} {model}."
 
+        # Takes the first 3 recalls only to save space
+        # Summaries information from JSON for LLM to use in response
         summary_list = []
         for recall in recalls[:3]:  
             component = recall.get("Component", "Unknown")
             rtype = recall.get("RecallType", "N/A")
             campaign = recall.get("NHTSACampaignNumber", "N/A")
-            # NOTE: no Summary used here
+            
             summary_list.append(
                 f"- {component} (type: {rtype}, campaign: {campaign})"
             )
@@ -190,17 +199,18 @@ def fetch_nhtsa_recalls(make, model, year):
         return f"Error fetching recalls: {str(e)}"
 
 
-# ----- FairLLM agent creation -----
+# Creation of FairLLM Agent
 def create_agent(model_name, role_prompt, tools=None, memory=None):
    
-
+    # Chosen model (from HuggingFace)
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
     
-
+    # ---- IMPORTANT ----
+    # The program did not run unless we hard-coded our HuggingFace token in here. Token is removed to allow file to be pushed to GitHub
     llm = HuggingFaceAdapter(model_name) #auth_token="copy/paste from in word doc")
 
-
+    # Register tools
     tool_registry = ToolRegistry()
     if tools:
         for tool in tools:
@@ -214,42 +224,47 @@ def create_agent(model_name, role_prompt, tools=None, memory=None):
     )
     return agent
 
-# ----- Main event loop -----
+# Main program loop
 async def main():
+
+    # Define tools
     recall_tool = RecallLookupTool()
     ratings_tool = RatingsLookupTool()
     tools = [recall_tool, ratings_tool]
 
-
+    # Explain role of the agent
     role_prompt = (
         "You are an expert auto safety and reliability assistant talking to an uninformed car buyer who does not know a lot about vehicles. "
     )
+
+    # Instantiate the agent
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0" 
     agent = create_agent(model_name, role_prompt, tools=tools, memory=None)
 
+    # Prompt the user for input
     print("Hello, I am a car-buying assistant. Type a question about a vehicle (e.g. '2018 Toyota Camry'). Type 'exit' to quit.\n")
 
     while True:
         try:
-            user_input = input("You: ")
+            user_input = input("Prompt: ")
             if user_input.lower() in ["exit", "quit"]:
                 print("Agent: Goodbye!")
                 break
 
-            # Call the tool directly with the user's query
-            #recall_info = recall_tool.call({'query': user_input})
-            #print("Raw recall info fetched from NHTSA:\n", recall_info)
+            # Call our tools with the user's query as input
             recall_info = recall_tool.call({"query": user_input})
             ratings_info = ratings_tool.call({"query": user_input})
+            # Display results of API call returns to the user
             print("Recall info:", recall_info)
             print("Ratings info:", ratings_info)
-            # Now prompt the LLM agent to summarize for consumer
+
+            # Prompt for the LLM agent 
             prompt = (
-                "Give a simple, non-technical summary of this vehicle's repair concerns, ratings, and trims and features for a used-car buyer. "
-                #"Include only the main 3 trims and 3-4 features of each only"
+                "Give a simple, non-technical summary of this vehicle's repair concerns, ratings, and trims and features for a used-car buyer"
                 f"Recalls:\n{recall_info}\n\nRatings:\n{ratings_info}\n"
             )
-            #print("Prompt:", prompt)
+            
+            # Response of the LLM summary displayed to the user
             llm_response = await agent.arun(prompt)
             print("Agent summary:", llm_response)
         except Exception as e:
