@@ -2,7 +2,7 @@
 # C1C Jack West and Brendan Wu
 # CS471 Fall 2025
 # Documentation: Included in separate file in the repository
-
+# Guide on how to run the program effectively is in the README word file
 import os
 import asyncio
 import requests
